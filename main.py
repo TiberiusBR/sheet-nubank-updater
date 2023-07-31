@@ -1,6 +1,6 @@
 from pynubank import Nubank
 from fastapi import FastAPI
-from settings.settings import settings
+from app.settings.settings import settings
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
