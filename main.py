@@ -29,7 +29,7 @@ async def health():
 
 
 @app.get("/cardbill")
-async def get_bill_info():
+async def cardbill():
     # Temporarily collecting via qr_code.
     creds = resolve_credentials()
     #creds, _ = google.auth.default()
