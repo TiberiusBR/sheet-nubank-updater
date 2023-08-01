@@ -20,7 +20,7 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 app = FastAPI()
 nu = Nubank()
 locale = Locale('pt','BR')
-nu.authenticate_with_cert(settings.USER_CPF, settings.USER_PASS, "./secrets/cert.p12")
+nu.authenticate_with_cert(settings.USER_CPF, settings.USER_PASS, "/secrets/cert.p12")
 
 
 @app.get("/")
