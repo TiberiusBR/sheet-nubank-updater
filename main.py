@@ -12,14 +12,14 @@ import google.auth
 import uvicorn
 import calendar
 from decimal import Decimal
-import locale
+from babel import Locale, numbers
 from typing import List
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 app = FastAPI()
 nu = Nubank()
-locale.setlocale(locale.LC_ALL, 'pt_BR')
+locale = Locale('pt','BR')
 nu.authenticate_with_cert(settings.USER_CPF, settings.USER_PASS, "./secrets/cert.p12")
 
 
@@ -31,8 +31,8 @@ async def health():
 @app.get("/cardbill")
 async def get_bill_info():
     # Temporarily collecting via qr_code.
-    #creds = resolve_credentials()
-    creds, _ = google.auth.default()
+    creds = resolve_credentials()
+    #creds, _ = google.auth.default()
     service = build("sheets", "v4", credentials=creds)
     values = collect_values()
     _, month, _ = get_current_date_br()
@@ -47,7 +47,7 @@ def append_credit(service, values, month):
         .values()
         .append(
             spreadsheetId=settings.SPREADSHEET_ID,
-            range=f"{calendar.month_name[month]}!I6:K",
+            range=f"{locale.months['format']['wide'][month]}!I6:K",
             body=body,
             valueInputOption="USER_ENTERED",
         )
@@ -69,7 +69,7 @@ def collect_values():
         info.append(
             [
                 bill["description"],
-                locale.currency(Decimal(parse_value(bill["amount"])), grouping=True),
+                numbers.format_currency(Decimal(parse_value(bill["amount"])), currency='BRL', locale=locale),
                 bill["title"],
             ]
         )
