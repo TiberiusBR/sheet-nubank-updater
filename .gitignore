@@ -200,3 +200,7 @@ override.tf.json
 # Ignore CLI configuration files
 .terraformrc
 terraform.rc
+
+#Especific terraform files folder
+/terraform/files
+/terraform/secrets

@@ -7,20 +7,19 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from datetime import datetime
 from zoneinfo import ZoneInfo
-import os
+from app.exception.received_payment_exception import ReceivedPaymentException
 import google.auth
+import os
 import uvicorn
-import calendar
 from decimal import Decimal
 from babel import Locale, numbers
-from typing import List
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 app = FastAPI()
 nu = Nubank()
-locale = Locale('pt','BR')
-nu.authenticate_with_cert(settings.USER_CPF, settings.USER_PASS, "/secrets/cert.p12")
+locale = Locale("pt", "BR")
+nu.authenticate_with_cert(settings.USER_CPF, settings.USER_PASS, settings.CERT_PATH)
 
 
 @app.get("/")
@@ -32,11 +31,33 @@ async def health():
 async def cardbill():
     # Temporarily collecting via qr_code.
     creds = resolve_credentials()
-    #creds, _ = google.auth.default()
+    # creds, _ = google.auth.default()
     service = build("sheets", "v4", credentials=creds)
-    values = collect_values()
+    credit_values = collect_values()
+    transfer_values = collect_transfer()
     _, month, _ = get_current_date_br()
-    return append_credit(service, values, month)
+    results = {}
+    results["credit"] = append_credit(service, credit_values, month)
+    results["transfer"] = append_transfer(service, transfer_values, month)
+    return results
+
+
+def append_transfer(service, values, month):
+    body = {"values": values}
+
+    result = (
+        service.spreadsheets()
+        .values()
+        .append(
+            spreadsheetId=settings.SPREADSHEET_ID,
+            range=f"{locale.months['format']['wide'][month]}!N6:Q",
+            body=body,
+            valueInputOption="USER_ENTERED",
+        )
+        .execute()
+    )
+
+    return result
 
 
 def append_credit(service, values, month):
@@ -47,7 +68,7 @@ def append_credit(service, values, month):
         .values()
         .append(
             spreadsheetId=settings.SPREADSHEET_ID,
-            range=f"{locale.months['format']['wide'][month]}!I6:K",
+            range=f"{locale.months['format']['wide'][month]}!I6:L",
             body=body,
             valueInputOption="USER_ENTERED",
         )
@@ -55,6 +76,41 @@ def append_credit(service, values, month):
     )
 
     return result
+
+
+def collect_transfer():
+    day, month, year = get_current_date_br()
+    info = []
+    feed = nu.get_account_feed()
+    for transfer in feed:
+        cur_year, cur_month, cur_day = map(
+            lambda time: int(time), transfer["postDate"].split("-")
+        )
+        if year != cur_year or month != cur_month or day != cur_day:
+            break
+        try:
+            title, destiny, value, date = resolve_values(transfer)
+            info.append([title, destiny, value, date])
+        except ReceivedPaymentException:
+            continue
+
+    return info
+
+
+def resolve_values(feed_event: dict) -> [str]:
+    title = feed_event["title"].lower()
+    detail = feed_event["detail"]
+    if "recebida" in title:
+        raise ReceivedPaymentException()
+    elif "nupay" in title:
+        title = "NuPay"
+        destiny = title.split("em ")[1].split(" via")[0]
+        value = detail.split("\n")[1]
+    else:
+        destiny = detail.split("\n")[0]
+        value = detail.split("\n")[1]
+
+    return title, destiny, value, feed_event["postDate"]
 
 
 def collect_values():
@@ -66,11 +122,15 @@ def collect_values():
         cur_year, cur_month, cur_day = split_date(bill["time"])
         if year != cur_year or month != cur_month or day != cur_day:
             break
+        value = numbers.format_currency(
+            Decimal(parse_value(bill["amount"])), currency="BRL", locale=locale
+        )
         info.append(
             [
                 bill["description"],
-                numbers.format_currency(Decimal(parse_value(bill["amount"])), currency='BRL', locale=locale),
+                value,
                 bill["title"],
+                "-".join(split_date(bill["time"])),
             ]
         )
     return info
